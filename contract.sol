@@ -1,16 +1,9 @@
-/**
- *Submitted for verification at BscScan.com on 
-*/
-
-/**
- *Submitted for verification at BscScan.com on 
-*/
 // File: @openzeppelin/contracts/token/ERC20/IERC20.sol
 
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v4.6.0) (token/ERC20/IERC20.sol)
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.19;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
@@ -833,7 +826,7 @@ library SafeMath {
 }
 
 
-contract FoxaaCapital is Ownable, ReentrancyGuard{
+contract testcontract is Ownable, ReentrancyGuard{
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -841,7 +834,7 @@ contract FoxaaCapital is Ownable, ReentrancyGuard{
     uint256 public referrerReward = 300; // 300 : 3 %. 10000 : 100 %
     uint256 public rewardPeriod = 1 days;
     uint256 public withdrawPeriod = 60 * 60 * 24 * 30; // 30 days
-    uint256 public apr = 500; // 500 APR,
+    uint256 public apr = 50; // 50 : 0.5 %. 10000 : 100 %
     uint256 public percentRate = 10000;
     address private devWallet;
     address public BUSDContract;
@@ -926,58 +919,52 @@ contract FoxaaCapital is Ownable, ReentrancyGuard{
     }
 
     function deposit(uint256 _amount, address _referrer) external {
-    require(launched == true, "Contract is not launched yet.");
-    require(_amount > 0, "You need to deposit more than 0 BUSD.");
+        require(launched == true, "Contract is not launched yet.");
+        require(_amount > 0, "You need to deposit more than 0 BUSD.");
 
-    if(_referrer == msg.sender){
-        _referrer = address(0);
-    }
+        if(_referrer == msg.sender){
+            _referrer = address(0);
+        }
+        IERC20(BUSDContract).safeTransferFrom(msg.sender,address(this),_amount);
 
-    // Claim any unclaimed rewards
-    uint256 claimableRewards = getAllClaimableReward(msg.sender);
-    if (claimableRewards > 0) {
-        claimAllReward();
-    }
+        uint256 _id = _getNextDepositID();
+        _incrementDepositID();
 
-    IERC20(BUSDContract).safeTransferFrom(msg.sender,address(this),_amount);
+        uint256 depositFee = (_amount * developerFee).div(percentRate);
+        // transfer dev fee to dev wallet.
+        IERC20(BUSDContract).safeTransfer(devWallet,depositFee);
+        // transfer referral fee to referrer.
 
-    uint256 _id = _getNextDepositID();
-    _incrementDepositID();
+        uint256 _depositAmount = _amount - depositFee;
 
-    uint256 depositFee = (_amount * developerFee).div(percentRate);
-    // transfer dev fee to dev wallet.
-    IERC20(BUSDContract).safeTransfer(devWallet,depositFee);
-    // transfer referral fee to referrer.
+        depositState[_id].investor = msg.sender;
+        depositState[_id].depositAmount = _depositAmount;
+        depositState[_id].depositAt = block.timestamp;
+        depositState[_id].state = true;
 
-    uint256 _depositAmount = _amount - depositFee;
+        if(investors[msg.sender].investor == address(0)){
+            totalInvestors = totalInvestors.add(1);
+            investors[msg.sender].investor = msg.sender;
+            investors[msg.sender].startTime = block.timestamp;
+            investors[msg.sender].lastCalculationDate = block.timestamp;
+        }
 
-    depositState[_id].investor = msg.sender;
-    depositState[_id].depositAmount = _depositAmount;
-    depositState[_id].depositAt = block.timestamp;
-    depositState[_id].state = true;
+        if(address(0) != _referrer && investors[msg.sender].referrer == address(0)) {
+            investors[msg.sender].referrer = _referrer;
+        }
 
-    if(investors[msg.sender].investor == address(0)){
-        totalInvestors = totalInvestors.add(1);
-        investors[msg.sender].investor = msg.sender;
-        investors[msg.sender].startTime = block.timestamp;
+        if(investors[msg.sender].referrer != address(0)){
+            uint256 referrerAmount = (_amount * referrerReward).div(percentRate);
+            
+            investors[investors[msg.sender].referrer].referAmount = investors[investors[msg.sender].referrer].referAmount.add(referrerAmount);
+            IERC20(BUSDContract).transfer(investors[msg.sender].referrer, referrerAmount);
+        }
+
+        //investors[msg.sender].claimableAmount = investors[msg.sender].claimableAmount.add(getAllClaimableReward(msg.sender));
+        investors[msg.sender].totalLocked = investors[msg.sender].totalLocked.add(_depositAmount);
         investors[msg.sender].lastCalculationDate = block.timestamp;
-    }
 
-    if(address(0) != _referrer && investors[msg.sender].referrer == address(0)) {
-        investors[msg.sender].referrer = _referrer;
-    }
-
-    if(investors[msg.sender].referrer != address(0)){
-        uint256 referrerAmount = (_amount * referrerReward).div(percentRate);
-
-        investors[investors[msg.sender].referrer].referAmount = investors[investors[msg.sender].referrer].referAmount.add(referrerAmount);
-        IERC20(BUSDContract).transfer(investors[msg.sender].referrer, referrerAmount);
-    }
-
-    investors[msg.sender].totalLocked = investors[msg.sender].totalLocked.add(_depositAmount);
-    investors[msg.sender].lastCalculationDate = block.timestamp;
-
-    totalInvested = totalInvested.add(_amount);
+        totalInvested = totalInvested.add(_amount);
 
         ownedDeposits[msg.sender].push(_id);
         emit Deposit(_id, msg.sender);
